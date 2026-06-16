@@ -73,6 +73,43 @@ interface CollageConfig {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * Extraction des fonctions de rendu pures hors du composant pour 
+ * éviter la re-création à chaque cycle de rendu.
+ */
+const CollagePreview = ({ config, photos }: { config: CollageConfig, photos: PhotoAsset[] }) => {
+  const slotCount = config.layout === '2x1' || config.layout === '1x2' ? 2 : 
+                   config.layout === '2x2' ? 4 : 3;
+  
+  const isRow = config.layout === '2x1' || config.layout === '3x1' || config.layout === 'main+2';
+
+  return (
+    <View style={[styles.collagePreview, { flexDirection: isRow ? 'row' : 'column' }]}>
+      {config.slots.slice(0, slotCount).map((slot, idx) => {
+        const photo = photos.find((p) => p.id === slot.photoId);
+        return (
+          <View
+            key={idx}
+            style={[
+              styles.collageSlot,
+              { flex: slot.flex },
+              config.layout === '2x2' && idx % 2 === 0 && { borderRightWidth: 1 },
+            ]}
+          >
+            {photo ? (
+              <Image source={{ uri: photo.uri }} style={styles.collageSlotImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.collageSlotEmpty}>
+                <Text style={{ color: '#555', fontSize: 20 }}>📷</Text>
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
 export default function EditorScreen() {
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -141,7 +178,7 @@ export default function EditorScreen() {
   const [addedText, setAddedText] = useState<string>('');
 
   const scrollRef = useRef<ScrollView>(null);
-  const videoPlayerRef = useRef<any>(null);
+  const videoPlayerRef = useRef<Video>(null);
   const isScrubbing = useRef<boolean>(false);
 
   // ── Effects ──────────────────────────────────────────────────────────────
@@ -554,37 +591,6 @@ export default function EditorScreen() {
     (c) => currentTime >= c.startTime && currentTime <= c.startTime + c.duration
   );
 
-  const renderCollagePreview = (config: CollageConfig) => {
-    const slotCount = getCollageSlotCount(config.layout);
-    const isRow = config.layout === '2x1' || config.layout === '3x1' || config.layout === 'main+2';
-
-    return (
-      <View style={[styles.collagePreview, { flexDirection: isRow ? 'row' : 'column' }]}>
-        {config.slots.slice(0, slotCount).map((slot, idx) => {
-          const photo = importedPhotos.find((p) => p.id === slot.photoId);
-          return (
-            <View
-              key={idx}
-              style={[
-                styles.collageSlot,
-                { flex: slot.flex },
-                config.layout === '2x2' && idx % 2 === 0 && { borderRightWidth: 1 },
-              ]}
-            >
-              {photo ? (
-                <Image source={{ uri: photo.uri }} style={styles.collageSlotImage} resizeMode="cover" />
-              ) : (
-                <View style={styles.collageSlotEmpty}>
-                  <Text style={{ color: '#555', fontSize: 20 }}>📷</Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </View>
-    );
-  };
-
   // ── Autres handlers (inchangés) ───────────────────────────────────────────
   const handleSignOut = async () => { await supabase.auth.signOut(); };
 
@@ -627,16 +633,26 @@ export default function EditorScreen() {
 
   const handleShiftClip = (amount: number) => {
     if (!selectedClipId || !selectedClipType) return;
-    if (selectedClipType === 'video') setVideoClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, start: Math.max(0, c.start + amount) } : c));
-    else if (selectedClipType === 'audio') setAudioClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, start: Math.max(0, c.start + amount) } : c));
-    else if (selectedClipType === 'text') setTextClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, start: Math.max(0, c.start + amount) } : c));
+    
+    const updateStart = (prev: Clip[]) => prev.map((c) => 
+      c.id === selectedClipId ? { ...c, start: Math.max(0, c.start + amount) } : c
+    );
+
+    if (selectedClipType === 'video') setVideoClips(updateStart);
+    else if (selectedClipType === 'audio') setAudioClips(updateStart);
+    else if (selectedClipType === 'text') setTextClips(updateStart as any);
   };
 
   const handleResizeClip = (amount: number) => {
     if (!selectedClipId || !selectedClipType) return;
-    if (selectedClipType === 'video') setVideoClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, duration: Math.max(0.5, c.duration + amount) } : c));
-    else if (selectedClipType === 'audio') setAudioClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, duration: Math.max(0.5, c.duration + amount) } : c));
-    else if (selectedClipType === 'text') setTextClips((prev) => prev.map((c) => c.id === selectedClipId ? { ...c, duration: Math.max(0.5, c.duration + amount) } : c));
+
+    const updateDuration = (prev: Clip[]) => prev.map((c) => 
+      c.id === selectedClipId ? { ...c, duration: Math.max(0.5, c.duration + amount) } : c
+    );
+
+    if (selectedClipType === 'video') setVideoClips(updateDuration);
+    else if (selectedClipType === 'audio') setAudioClips(updateDuration);
+    else if (selectedClipType === 'text') setTextClips(updateDuration as any);
   };
 
   const handleAddKeyframe = () => {
@@ -704,7 +720,7 @@ export default function EditorScreen() {
             <ActivityIndicator size="large" color="#00E5FF" />
           ) : activeCollage ? (
             // ── Affichage collage actif ──
-            renderCollagePreview(activeCollage)
+            <CollagePreview config={activeCollage} photos={importedPhotos} />
           ) : videoUri ? (
             <Video
               ref={videoPlayerRef}
@@ -1441,7 +1457,10 @@ export default function EditorScreen() {
             {/* Prévisualisation du collage */}
             <Text style={styles.collageSectionLabel}>Prévisualisation :</Text>
             <View style={styles.collagePreviewContainer}>
-              {renderCollagePreview({ layout: selectedLayout, slots: Array.from({ length: getCollageSlotCount(selectedLayout) }, (_, i) => ({ photoId: pendingCollagePhotos[i]?.id || null, flex: selectedLayout === 'main+2' && i === 0 ? 2 : 1 })), duration: 5, startTime: currentTime })}
+              <CollagePreview 
+                config={{ layout: selectedLayout, slots: Array.from({ length: getCollageSlotCount(selectedLayout) }, (_, i) => ({ photoId: pendingCollagePhotos[i]?.id || null, flex: selectedLayout === 'main+2' && i === 0 ? 2 : 1 })), duration: 5, startTime: currentTime }} 
+                photos={importedPhotos} 
+              />
             </View>
 
             {/* Grille de sélection photos */}

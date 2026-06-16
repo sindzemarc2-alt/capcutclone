@@ -10,13 +10,6 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  useEffect(() => {
-    const clearSession = async () => {
-      await supabase.auth.signOut();
-    };
-    clearSession();
-  }, []);
-
   async function handleSignIn() {
     Keyboard.dismiss();
     const cleanEmail = email.trim();
